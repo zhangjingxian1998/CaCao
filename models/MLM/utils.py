@@ -9,13 +9,13 @@ from PIL import Image
 import numpy as np
 coarse = ['above', 'across', 'against', 'along', 'and', 'at', 'behind', 'between', 'for', 'from', 'has', 'in', 'in front of', 'near', 'of', 'on', 'over', 'to', 'under', 'with']
 fine = ['attached to', 'belonging to', 'carrying', 'covered in', 'covering', 'eating', 'flying in', 'growing on', 'hanging from', 'holding', 'laying on', 'looking at', 'lying on', 'made of', 'mounted on', 'on back of', 'painted on', 'parked on', 'part of', 'playing', 'riding', 'says', 'sitting on', 'standing on', 'using', 'walking in', 'walking on', 'watching', 'wearing', 'wears']
-gqa_info = json.load(open('/home/qifan/datasets/GQA/GQA_200_ID_Info.json'))
-gqa_predicate_set = gqa_info['ind_to_predicates'][1:]
+gqa_info = json.load(open('/home/Datasets/GQA/GQA_200_ID_Info.json'))
+gqa_predicate_set = gqa_info['ind_to_predicates'][1:]   
 
 # vg-50 categories for stanford VG
-vg_words = [line.strip('\n').strip('\r') for line in open('/home/qifan/datasets/vg/predicate_list.txt')]
-# total 587 categories for open-world VG
-total_words = [line.strip('\n').strip('\r') for line in open('datasets/vg/extra_predicates_list.txt')]
+# vg_words = [line.strip('\n').strip('\r') for line in open('/media/data/lost+found/gff/model/cacao/CaCao-main/datasets/vg/predicate_list.txt')]
+vg_words = [line.strip('\n').strip('\r') for line in open('/home/Datasets/VG/predicate_list.txt')]
+total_words = [line.strip('\n').strip('\r') for line in open('/home/Datasets/VG/predicate_list.txt')]
 print(len(total_words))
 class fineTuningDataset(Dataset):
     def __init__(self, path, img_root, mode=None):

@@ -310,7 +310,7 @@ def predict_rel_prompt(model, img_path, subject, object):
         batch_text.append((subject[i].lower(), predicate, object[i].lower())) 
     with torch.no_grad():
         output = model(batch_text, img_path, is_label=False)
-    predictions = output
+    predictions = output[0][0]
     expand_results = [] 
     expand_results_mapping = []
     # candidate predicates prediction
@@ -398,8 +398,6 @@ def expand_relationships(rel_data, obj_data, img_data, split, encoded_label, idx
     rst = []
     expand_relation_dict = dict()
     for i, rel_info in tqdm(enumerate(rel_data)):
-        if i < 20:
-            continue
         if split[i] == 0:
             obj_info = obj_data[i]
             inter_objects = []
@@ -514,6 +512,37 @@ def expand_relationships(rel_data, obj_data, img_data, split, encoded_label, idx
                 rel_id = expand_predicate_to_idx[relationship[1]]
                 new_rel_dict['relations'].append([sub_idx, obj_idx, rel_id])
                 expand_dataset[str(img_id)].append(relationship)
+            
+
+
+                        # if subject_label != object_label:
+                        #     predicate_results = predict_rel_prompt(model_own, img_path, subject_label, object_label, device)
+                        #     expand_relation.append(predicate_results)
+                        #     for relationship in predicate_results:
+                        #         new_relation = {}
+                        #         new_predicate = relationship[1]
+                        #         new_object = object
+                        #         new_subject = subject
+                        #         max_rel_id += 1
+                        #         new_relationship_id = max_rel_id
+                        #         # new_synsets = wn.synsets(new_predicate)[0]
+                        #         new_synsets = [new_predicate + '.n.01']
+                        #         new_relation['predicate'] = new_predicate
+                        #         if new_predicate not in new_predicate_dict.keys():
+                        #             new_predicate_dict[new_predicate] = 1
+                        #         else:
+                        #             new_predicate_dict[new_predicate] += 1 
+                        #         new_relation['object'] = new_object
+                        #         new_relation['relationship_id'] = new_relationship_id
+                        #         new_relation['synsets'] = new_synsets
+                        #         new_relation['subject'] = new_subject
+                        #         new_rels.append(new_relation)
+                                
+                        #         sub_idx = id_to_idx[subject['object_id']] - im_to_first_obj[i]
+                        #         obj_idx = id_to_idx[object['object_id']] - im_to_first_obj[i]
+                        #         rel_id = expand_predicate_to_idx[relationship[1]]
+                        #         new_rel_dict['relations'].append([sub_idx, obj_idx, rel_id])
+                        #         expand_dataset[str(img_id)].append(relationship)
 
             new_rel_dict['relations'] = np.array(new_rel_dict['relations']) # expanded relationships like IETrans(external) with .pk
             expand_relation_dict[img_id] = expand_relation # expanded information for CaCao
@@ -815,70 +844,320 @@ def sync_objects(obj_data, rel_data):
 
 def main(args):
     save_path = f'class_{args.mode}'
-    time_0 = time.time()
-    obj_data = np.load(os.path.join(save_path,'obj_data.npy'),allow_pickle=True).tolist()
-    rel_data = np.load(os.path.join(save_path,'rel_data.npy'),allow_pickle=True).tolist()
-    img_data = np.load(os.path.join(save_path,'img_data.npy'),allow_pickle=True).tolist()
-    base_filter_predicate = np.load(os.path.join(save_path,'base_filter_predicate.npy'),allow_pickle=True).item()
-    base_predicate_to_idx = np.load(os.path.join(save_path,'base_predicate_to_idx.npy'),allow_pickle=True).item()
-    encoded_boxes = np.load(os.path.join(save_path,'encoded_boxes.npy'),allow_pickle=True).item()
-    encoded_label = np.load(os.path.join(save_path,'encoded_label.npy'),allow_pickle=True)
-    expand_predicate_to_idx = np.load(os.path.join(save_path,'expand_predicate_to_idx.npy'),allow_pickle=True).item()
-    expand_predicate_token_counter = np.load(os.path.join(save_path,'expand_predicate_token_counter.npy'),allow_pickle=True).item()
-    idx_to_base_predicate = np.load(os.path.join(save_path,'idx_to_base_predicate.npy'),allow_pickle=True).item()
-    idx_to_expand_predicate = np.load(os.path.join(save_path,'idx_to_expand_predicate.npy'),allow_pickle=True).item()
-    idx_to_label = np.load(os.path.join(save_path,'idx_to_label.npy'),allow_pickle=True).item()
-    idx_to_novel_predicate = np.load(os.path.join(save_path,'idx_to_novel_predicate.npy'),allow_pickle=True).item()
-    idx_to_predicate = np.load(os.path.join(save_path,'idx_to_predicate.npy'),allow_pickle=True).item()
-    im_to_first_obj = np.load(os.path.join(save_path,'im_to_first_obj.npy'),allow_pickle=True)
-    im_to_last_obj = np.load(os.path.join(save_path,'im_to_last_obj.npy'),allow_pickle=True)
-    label_to_idx = np.load(os.path.join(save_path,'label_to_idx.npy'),allow_pickle=True).item()
-    novel_predicate_to_idx = np.load(os.path.join(save_path,'novel_predicate_to_idx.npy'),allow_pickle=True).item()
-    object_token_counter = np.load(os.path.join(save_path,'object_token_counter.npy'),allow_pickle=True).item()
-    predicate_to_idx = np.load(os.path.join(save_path,'predicate_to_idx.npy'),allow_pickle=True).item()
-    predicate_token_counter = np.load(os.path.join(save_path,'predicate_token_counter.npy'),allow_pickle=True).item()
-    split = np.load(os.path.join(save_path,'split.npy'),allow_pickle=True)
-    time_1 = time.time()
-    print('加载数据耗时:',time_1-time_0)
-    # return
-    expand_number, new_predicate_dict = expand_relationships(rel_data, obj_data, img_data, split, encoded_label, idx_to_label, im_to_first_obj, im_to_last_obj, encoded_boxes, expand_predicate_to_idx)
-    print('expand relationships: ', expand_number)
-    print('new_predicate_dict: ', new_predicate_dict)
-    # update expand_predicate_token_counter by new predicates
-    for new_key in new_predicate_dict.keys():
-        if new_key in expand_predicate_token_counter:
-            expand_predicate_token_counter[new_key] += new_predicate_dict[new_key]
-        else:
-            expand_predicate_token_counter[new_key] = new_predicate_dict[new_key]
-    # for open-vocabulary update rel_token_id with rel_dict
-    encoded_predicate, encoded_rel, im_to_first_rel, im_to_last_rel, filter_predicate_counter = \
-    encode_relationships(rel_data, expand_predicate_to_idx, obj_data, new_predicate_dict, expand_predicate_token_counter)
-    # update number of relationships
-    f = h5.File(os.path.join(save_path, args.h5_file), 'a')
-    f.create_dataset('predicates', data=encoded_predicate)
-    f.create_dataset('relationships', data=encoded_rel)
-    f.create_dataset('img_to_first_rel', data=im_to_first_rel)
-    f.create_dataset('img_to_last_rel', data=im_to_last_rel)
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+    print('start')
+    pprint.pprint(args)
+    obj_alias_dict = {}
+    if len(args.object_alias) > 0:
+        print('using object alias from %s' % (args.object_alias))
+        obj_alias_dict, obj_vocab_list = make_alias_dict(args.object_alias)
 
-    print('new num objects = %i' % encoded_label.shape[0])
-    print('new num relationships = %i' % encoded_predicate.shape[0])
-    # and write the additional json file
-    json_struct = {
+    pred_alias_dict = {}
+    if len(args.pred_alias) > 0:
+        print('using predicate alias from %s' % (args.pred_alias))
+        pred_alias_dict, pred_vocab_list = make_alias_dict(args.pred_alias)
+
+    obj_list = []
+    if len(args.object_list) > 0:
+        print('using object list from %s' % (args.object_list))
+        obj_list = make_list(args.object_list)
+        assert(len(obj_list) >= args.num_objects)
+
+    pred_list = []
+    if len(args.pred_list) > 0:
+        print('using predicate list from %s' % (args.pred_list))
+        pred_list = make_list(args.pred_list)
+        assert(len(obj_list) >= args.num_predicates)
+
+    # read in the annotation data
+    print('loading json files..')
+    time_0 = time.time()
+    obj_data = json.load(open(args.object_input)) # 耗时 23.735572338104248
+    time_1 = time.time()
+    print('读取obj_data耗时:',time_1-time_0)
+    rel_data = json.load(open(args.relationship_input)) # 耗时 31.382099866867065
+    time_2 = time.time()
+    print('读取rel_data耗时:',time_2-time_1)
+    img_data = json.load(open(args.metadata_input)) # 0.2966177463531494
+    time_3 = time.time()
+    print('读取img_data耗时:',time_3-time_2)
+    time_0 = time.time()
+    time_1 = time.time()
+    print('读取数据耗时:',time_1-time_0)
+    assert(len(rel_data) == len(obj_data) and
+           len(obj_data) == len(img_data))
+    # 51498 img in coco of 108077 VG-150 dataset
+    print('read image db from %s' % args.imdb)
+    imdb = h5.File(args.imdb, 'r')
+    num_im, _, _, _ = imdb['images'].shape
+    img_long_sizes = [512, 1024]    
+    valid_im_idx = imdb['valid_idx'][:] # valid image indices
+    img_ids = imdb['image_ids'][:]
+    obj_data = filter_by_idx(obj_data, valid_im_idx)
+    rel_data = filter_by_idx(rel_data, valid_im_idx)
+    img_data = filter_by_idx(img_data, valid_im_idx)
+    # sanity check
+    for i in range(num_im):
+        assert(obj_data[i]['image_id'] \
+               == rel_data[i]['image_id'] \
+               == img_data[i]['image_id'] \
+               == img_ids[i]
+               )
+
+    # may only load a fraction of the data
+    if args.load_frac < 1:
+        num_im = int(num_im*args.load_frac)
+        obj_data = obj_data[:num_im]
+        rel_data = rel_data[:num_im]
+    
+    print('processing %i images' % num_im)
+    time_4 = time.time()
+    # sync objects from rel to obj_data
+    sync_objects(obj_data, rel_data) # 耗时 3.2866623401641846
+    time_5 = time.time()
+    print('sync_objects耗时:',time_5-time_4)
+
+    obj_rel_cross_check(obj_data, rel_data) # 耗时 2.8436975479125977
+    time_6 = time.time()
+    print('obj_rel_cross_check耗时:',time_6-time_5)
+
+    # preprocess label data
+    preprocess_object_labels(obj_data, alias_dict=obj_alias_dict)
+    time_7 = time.time()
+    print('preprocess_object_labels耗时:',time_7-time_6) # 25.267175436019897
+    preprocess_predicates(rel_data, alias_dict=pred_alias_dict)
+    time_8 = time.time()
+    print('preprocess_predicates耗时:',time_8-time_7) # 6.096548318862915
+
+    heights, widths = imdb['original_heights'][:], imdb['original_widths'][:]
+    if args.min_box_area_frac > 0:
+        # filter out invalid small boxes, if box is smaller than min_box_area of image, then filter
+        print('threshold bounding box by %f area fraction' % args.min_box_area_frac)
+        filter_object_boxes(obj_data, heights, widths, args.min_box_area_frac) # filter by box dimensions
+    print('filter_object_boxes耗时:',time.time() - time_0) # 2.824154853820801
+
+    time_9 = time.time()
+    merge_duplicate_boxes(obj_data)
+    print('merge_stop')
+    # build vocabulary
+    time_10 = time.time()
+    object_tokens, object_token_counter = extract_object_token(obj_data, args.num_objects,
+                                                               obj_list)
+    time_11 = time.time()
+    print('extract_object_token耗时:',time_11-time_10)
+
+    label_to_idx, idx_to_label = build_token_dict(object_tokens)
+
+
+    predicate_tokens, predicate_token_counter = extract_predicate_token(rel_data,
+                                                                        args.num_predicates,
+                                                                        pred_list)
+    
+    predicate_to_idx, idx_to_predicate = build_token_dict(predicate_tokens)
+    time_12 = time.time()
+    print('build_token_dict1耗时:',time_12-time_11)
+    print('objects: ',len(idx_to_label))
+    print('relationships: ',len(idx_to_predicate))
+
+
+
+    # sorted by number of label
+    predicate_sorted = sorted(predicate_token_counter.items(), key=lambda x:x[1], reverse=True)
+    predicate_sorted_name = []
+    for key in predicate_sorted:
+        predicate_sorted_name.append(key[0])
+
+    # open-vocabulary setting
+    print(predicate_sorted_name[:35])
+    print(predicate_sorted_name[35:])
+    base_predicates = predicate_sorted_name[:21]
+    novel_predicates = predicate_sorted_name[40:]
+    base_predicates.append(predicate_sorted_name[21])
+    base_predicates.append(predicate_sorted_name[24])
+    base_predicates.append(predicate_sorted_name[25])
+    base_predicates.append(predicate_sorted_name[28])
+    base_predicates.append(predicate_sorted_name[23])
+    novel_predicates.append(predicate_sorted_name[26])
+    novel_predicates.append(predicate_sorted_name[27])
+    novel_predicates.append(predicate_sorted_name[22])
+    novel_predicates.append(predicate_sorted_name[29])
+    novel_predicates.append(predicate_sorted_name[32])
+    base_predicates.append(predicate_sorted_name[30])
+    base_predicates.append(predicate_sorted_name[31])
+    base_predicates.extend(predicate_sorted_name[33:40])
+
+    print('base_predicates:', base_predicates)
+    print('novel_predicates:', novel_predicates)
+
+    # unsupervised setting, filter all relationship in train-set and only use pseudo-label data
+
+    # expand base predicate_tokens
+    novel_predicate_tokens = set()
+    base_predicate_tokens = set()
+    expand_pred_list = []
+    
+    # expanded predicates encode
+    for p in predicate_tokens:
+        expand_pred_list.append(p)
+    for p in words:
+        if p not in expand_pred_list:
+            expand_pred_list.append(p) 
+    
+    # update original token counter for expanded predicates(some rare predicates also in expanded-set) only keep 460/587 predicates with enough instances
+    time_13 = time.time()
+    expand_predicate_tokens, expand_predicate_token_counter = extract_predicate_token(rel_data,
+                                                                        len(expand_pred_list),
+                                                                        expand_pred_list)
+    time_14 = time.time()
+    print('extract_predicate_token耗时:',time_14-time_13)
+    # base_sum = 0
+    # fine_sum = 0                                                                    
+    # for p in novel_predicates:
+    #     print(p, expand_predicate_token_counter[p])
+    #     fine_sum += expand_predicate_token_counter[p]
+    # for p in base_predicates:
+    #     print(p, expand_predicate_token_counter[p])
+    #     base_sum += expand_predicate_token_counter[p]
+    # print(base_sum)
+    # print(fine_sum)
+
+    # consider infrequent predicates
+    for p in expand_pred_list:
+        if p not in expand_predicate_tokens:
+            expand_predicate_tokens.add(p)
+            expand_predicate_token_counter[p] = 0
+    # seen/unseen predicate classes dict  
+    for p in novel_predicates:
+        novel_predicate_tokens.add(p)
+    for p in base_predicates:
+        base_predicate_tokens.add(p)
+        # when in base setting and ov-setting, target_predicate both need for all 50 predicates
+        novel_predicate_tokens.add(p)
+    # if we encode all relationship in training stage, it seems like classifiction
+    # but in realistic zero-shot setting, we should only encode base classes of relation(encluding expanded relation)
+    # for evaluation, individually encode novel classes of relation and predict individual relation_idx with similarity
+    time_15 = time.time()
+    novel_predicate_to_idx, idx_to_novel_predicate = build_token_dict(novel_predicate_tokens)
+    base_predicate_to_idx, idx_to_base_predicate = build_token_dict(base_predicate_tokens)
+    expand_predicate_to_idx, idx_to_expand_predicate = build_token_dict(expand_predicate_tokens)
+    time_16 = time.time()
+    print('build_token_dict2耗时:',time_16-time_15)
+    print('expand predicate tokens: ', len(expand_predicate_tokens))
+    print('test predicate tokens: ', len(novel_predicate_tokens))
+    print('base predicate tokens: ', len(base_predicate_tokens))
+
+    # train  base_predicate_num: 1418382 novel_predicate_num: 242932
+    # test  base_predicate_num: 560815 novel_predicate_num: 93934
+    # 70% objects 45865/75651
+    
+    # coarse_predicate = predicate_sorted[20:]
+    # valid_predicate = predicate_sorted[15:20]
+    # fine_predicate = predicate_sorted[:20]
+    # coarse_predicate = ['on', 'has', 'in', 'of', 'wearing', 'near', 'with', 'above', 'holding', 'behind', 'under', 'and', 'wears', 'to', 'along', 'at', 'from', 'over', 'for', 'sitting on', 'riding','in front of'] 
+    # valid_predicate = ['laying on','playing','eating','covering','on back of']
+    # fine_predicate = ['carrying', 'walking on', 'attached to', 'watching', 'between', 'belonging to', 'painted on', 'against', 'looking at', 'hanging from', 'parked on', 'made of', 'covered in', 'mounted on', 'says', 'part of', 'across', 'flying in', 'using', 'lying on', 'growing on', 'walking in', 'standing on']
+    # write the h5 file
+    f = h5.File(os.path.join(save_path, args.h5_file), 'w')
+    f_base = h5.File(os.path.join(save_path, args.h5_file_base), 'w')
+    # encode object
+    encoded_label, encoded_boxes, im_to_first_obj, im_to_last_obj = \
+    encode_objects(obj_data, label_to_idx, object_token_counter, \
+                   heights, widths, img_long_sizes)
+
+    f.create_dataset('labels', data=encoded_label)
+    for k, boxes in encoded_boxes.items():
+        # create different scale of boxes(512,1024)
+        f.create_dataset('boxes_%i' % k, data=boxes)
+    f.create_dataset('img_to_first_box', data=im_to_first_obj)
+    f.create_dataset('img_to_last_box', data=im_to_last_obj)
+
+    # base dataset without data expand
+    f_base.create_dataset('labels', data=encoded_label)
+    for k, boxes in encoded_boxes.items():
+        f_base.create_dataset('boxes_%i' % k, data=boxes)
+    f_base.create_dataset('img_to_first_box', data=im_to_first_obj)
+    f_base.create_dataset('img_to_last_box', data=im_to_last_obj)
+    # relationships_info(rel_data, predicate_to_idx, obj_data)
+
+    # build train/val/test splits
+
+    opt = None
+    if not args.use_input_split:
+        opt = {}
+        opt['val_begin_idx'] = int(len(obj_data) * args.train_frac)
+        opt['test_begin_idx'] = int(len(obj_data) * args.val_frac)
+        opt['shuffle'] = args.shuffle
+    
+    print('----------starting split dataset to train/valid/test-------------')
+    roi_h5 = h5.File(args.input_split_file, 'r')
+    data_split = roi_h5['split'][:]
+    
+    # original split for base setting of SGG
+    split = encode_splits_random(obj_data, rel_data, data_split, opt)
+    if split is not None:
+        f.create_dataset('split', data=split) # 2 = test, 0 = train
+        f_base.create_dataset('split', data=split)
+
+    # special split for open-vocabulary setting of SGG and filter novel predicates in train-set
+    # split = encode_splits(obj_data, rel_data, base_predicate_tokens, data_split, opt)
+    # if split is not None:
+    #     f.create_dataset('split', data=split) # 1 = test, 0 = train
+    #     f_base.create_dataset('split', data=split)
+    
+    encoded_predicate_base, encoded_rel_base, im_to_first_rel_base, im_to_last_rel_base, base_filter_predicate = \
+        relationships_info(rel_data, predicate_to_idx, obj_data, predicate_token_counter)
+    f_base.create_dataset('predicates', data=encoded_predicate_base)
+    f_base.create_dataset('relationships', data=encoded_rel_base)
+    f_base.create_dataset('img_to_first_rel', data=im_to_first_rel_base)
+    f_base.create_dataset('img_to_last_rel', data=im_to_last_rel_base)
+    print('base num objects = %i' % encoded_label.shape[0])
+    print('base num relationships = %i' % encoded_predicate_base.shape[0])
+    json_struct_base = {
         'label_to_idx': label_to_idx,
         'idx_to_label': idx_to_label,
         'target_to_idx': novel_predicate_to_idx,
         'idx_to_target': idx_to_novel_predicate,
         'base_to_idx': base_predicate_to_idx,
         'idx_to_base': idx_to_base_predicate,
-        'predicate_to_idx': expand_predicate_to_idx,
-        'idx_to_predicate': idx_to_expand_predicate,
-        'predicate_count': expand_predicate_token_counter,
-        'filter_predicate_counter': filter_predicate_counter,
+        'predicate_to_idx': predicate_to_idx,
+        'idx_to_predicate': idx_to_predicate,
+        'predicate_count': predicate_token_counter,
+        'filter_predicate_counter': base_filter_predicate,
         'object_count': object_token_counter,
-        'new_predicate_count': new_predicate_dict
     }
-    with open(os.path.join(save_path, args.json_file), 'w') as f:
-        json.dump(json_struct, f)
+    with open(os.path.join(save_path,args.json_file_base), 'w') as f_base:
+        json.dump(json_struct_base, f_base)
+    print('early stop for only test for 0.5 datasets for SGG training')
+    print('----------starting expand relationships of train-set-------------')
+    
+    
+    np.save(os.path.join(save_path,'obj_data.npy'),np.array(obj_data))
+    np.save(os.path.join(save_path,'rel_data.npy'),np.array(rel_data))
+    np.save(os.path.join(save_path,'img_data.npy'),np.array(img_data))
+
+    np.save(os.path.join(save_path,'base_filter_predicate.npy'),np.array(base_filter_predicate))
+    np.save(os.path.join(save_path,'base_predicate_to_idx.npy'),np.array(base_predicate_to_idx))
+
+    np.save(os.path.join(save_path,'encoded_boxes.npy'),np.array(encoded_boxes))
+    np.save(os.path.join(save_path,'encoded_label.npy'),np.array(encoded_label))
+    np.save(os.path.join(save_path,'expand_predicate_to_idx.npy'),np.array(expand_predicate_to_idx))
+    np.save(os.path.join(save_path,'expand_predicate_token_counter.npy'),np.array(expand_predicate_token_counter))
+
+    np.save(os.path.join(save_path,'idx_to_base_predicate.npy'),np.array(idx_to_base_predicate))
+    np.save(os.path.join(save_path,'idx_to_expand_predicate.npy'),np.array(idx_to_expand_predicate))
+    np.save(os.path.join(save_path,'idx_to_label.npy'),np.array(idx_to_label))
+    np.save(os.path.join(save_path,'idx_to_novel_predicate.npy'),np.array(idx_to_novel_predicate))
+    np.save(os.path.join(save_path,'idx_to_predicate.npy'),np.array(idx_to_predicate))
+    np.save(os.path.join(save_path,'im_to_first_obj.npy'),np.array(im_to_first_obj))
+    np.save(os.path.join(save_path,'im_to_last_obj.npy'),np.array(im_to_last_obj))
+
+    np.save(os.path.join(save_path,'label_to_idx.npy'),np.array(label_to_idx))
+    np.save(os.path.join(save_path,'novel_predicate_to_idx.npy'),np.array(novel_predicate_to_idx))
+    np.save(os.path.join(save_path,'object_token_counter.npy'),np.array(object_token_counter))
+    np.save(os.path.join(save_path,'predicate_to_idx.npy'),np.array(predicate_to_idx))
+    np.save(os.path.join(save_path,'predicate_token_counter.npy'),np.array(predicate_token_counter))
+    np.save(os.path.join(save_path,'split.npy'),np.array(split))
 
 
 if __name__ == '__main__':
