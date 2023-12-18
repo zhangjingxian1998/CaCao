@@ -133,11 +133,11 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--image_dir', default='/home/Datasets/VG/VG_100K/') # All vg image
+    parser.add_argument('--image_dir', default='datasets/vg/VG_100K/') # All vg image
     parser.add_argument('--image_size', default=512, type=int)
     parser.add_argument('--imh5_dir', default='./')
     parser.add_argument('--num_workers', default=8, type=int)
-    parser.add_argument('--metadata_input', default='/home/Datasets/VG/image_data.json', type=str)
+    parser.add_argument('--metadata_input', default='datasets/vg/image_data.json', type=str)
 
     args = parser.parse_args()
     main(args)

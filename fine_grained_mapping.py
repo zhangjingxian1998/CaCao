@@ -1,9 +1,9 @@
 import json
 import torch
 import os
-from models.MLM.mpt_test import VisualBertPromptModel
 
-from models.MLM.utils import fineTuningDataset
+from models.MLM.utils_speed_up import load_vg_dataset_image_text, VisualBertPromptModel
+from tqdm import tqdm
 
 def predict_rel_prompt(model, img_path, subject, object, device):
     predicate = '[MASK]'
@@ -11,7 +11,7 @@ def predict_rel_prompt(model, img_path, subject, object, device):
     batch_img = []
     img_id = 1
     basename =  str(img_id) + '.jpg'
-    img_path = os.path.join("/home/qifan/datasets/vg/VG_100K", basename)
+    img_path = os.path.join("datasets/vg/VG_100K", basename)
     batch_text.append((subject.lower(), predicate, object.lower()))  
     batch_img.append(img_path)
     output = model(batch_text, batch_img, device=device, is_label=False)
@@ -28,13 +28,13 @@ def predict_rel_prompt(model, img_path, subject, object, device):
 # def predicate_embedding(subject, predicate, object):
 
 if __name__ == '__main__':
-    target_words = [line.strip('\n').strip('\r') for line in open('/home/qifan/datasets/vg/predicate_list.txt')] # base 50 categories predicates
+    target_words = [line.strip('\n').strip('\r') for line in open('datasets/vg/predicate_list.txt')] # base 50 categories predicates
     coarse_predicates = ['above', 'across', 'against', 'along', 'and', 'at', 'behind', 'between', 'for', 'from', 'has', 'in', 'in front of', 'near', 'of', 'on', 'over', 'to', 'under', 'with']
     fine_predicates = ['attached to', 'belonging to', 'carrying', 'covered in', 'covering', 'eating', 'flying in', 'growing on', 'hanging from', 'holding', 'laying on', 'looking at', 'lying on', 'made of', 'mounted on', 'on back of', 'painted on', 'parked on', 'part of', 'playing', 'riding', 'says', 'sitting on', 'standing on', 'using', 'walking in', 'walking on', 'watching', 'wearing', 'wears']
     
     # resourced dataset for CaCao cross-modal prompt tuning
-    finetuned_dataset = fineTuningDataset('datasets/image_caption_triplet_all.json',"/home/qifan/datasets/coco/train2014/",'train')
-    raw_predicates = finetuned_dataset.predicates_words
+    _, _, raw_predicates = load_vg_dataset_image_text('datasets/image_caption_triplet_all.json')
+
     # got mapping dict with embedding similarity of BERT Embedding Layer(fine-tuned)
     device = 'cuda:0'
     prompt_candidates = []
@@ -47,28 +47,28 @@ if __name__ == '__main__':
     # fine-grained mapping
     mapping_dict = dict()
 
-    # GQA-200 mapping
-    gqa_200_ID_info = '/home/qifan/datasets/GQA/GQA_200_ID_Info.json'
-    gqa_id_info = json.load(open(gqa_200_ID_info))
-    idx_to_predicate = gqa_id_info['rel_id_to_name']
-    gqa_predicate_label = []
-    for w in idx_to_predicate.values():
-        if w != '__background__':
-            gqa_predicate_label.append(w)
+    # # GQA-200 mapping
+    # gqa_200_ID_info = '/home/qifan/datasets/GQA/GQA_200_ID_Info.json'
+    # gqa_id_info = json.load(open(gqa_200_ID_info))
+    # idx_to_predicate = gqa_id_info['rel_id_to_name']
+    # gqa_predicate_label = []
+    # for w in idx_to_predicate.values():
+    #     if w != '__background__':
+    #         gqa_predicate_label.append(w)
     
-    # vg mapping
-    vg_predicate_label = fine_predicates
+    # # vg mapping
+    # vg_predicate_label = fine_predicates
 
-    # vg-1800 mapping
-    vg_1800_file = "/home/qifan/datasets/vg/1000/VG-dicts.json"
-    vg_1800_info = json.load(open(vg_1800_file))
-    vg_1800_predicate_label = []
-    for label in vg_1800_info['predicate_to_idx']:
-        vg_1800_predicate_label.append(label)
+    # # vg-1800 mapping
+    # vg_1800_file = "/home/qifan/datasets/vg/1000/VG-dicts.json"
+    # vg_1800_info = json.load(open(vg_1800_file))
+    # vg_1800_predicate_label = []
+    # for label in vg_1800_info['predicate_to_idx']:
+    #     vg_1800_predicate_label.append(label)
 
     # prep_words = ['on','in','of','up','to','at']
     prep_words = []
-    for raw_word in raw_predicates:
+    for raw_word in tqdm(raw_predicates):
         mapping_dict[raw_word] = model_own.mapping_target(raw_word, target_words, prep_words, device)
 
     json.dump(mapping_dict, open('utils_data/mapping/openworld_predicate_mapping_dict_50.json','w'))

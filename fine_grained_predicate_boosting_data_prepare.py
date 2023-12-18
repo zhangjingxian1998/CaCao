@@ -6,14 +6,10 @@
 # --------------------------------------------------------
 
 import argparse, json, string
-import pickle
-from cgi import test
 import os
 import random
 from collections import Counter
 import math
-from cv2 import phase
-from nltk.corpus import wordnet as wn
 from math import floor
 import h5py as h5
 import numpy as np
@@ -21,18 +17,10 @@ import pprint
 
 import torch
 from tqdm import tqdm
-from models.MLM.utils import fineTuningDataset
 from models.MLM.tokenization_bert_fast import BertTokenizerFast
 from models.MLM.mpt_test_boost import VisualBertPromptModel
-import time
-import h5py
+from models.MLM.utils_speed_up import load_vg_dataset_image_text, load_vg_mapping_dataset_image_text
 
-
-target_words = [line.strip('\n').strip('\r') for line in open('datasets/vg/predicate_list.txt')]
-mapping_dict = json.load(open('utils_data/mapping/openworld_predicate_mapping_dict_50.json'))
-fine_words_dataset = fineTuningDataset('datasets/image_caption_triplet_all.json',"/home/Datasets/coco/train2014/",'train')
-words = fine_words_dataset.predicates_words
-device = 'cuda'
 """
 A script for generating fine-grained predicates for the VisualGenome dataset
 """
@@ -353,7 +341,7 @@ def predict_rel_prompt(model, img_path, subject, object):
     # expand_results.append((batch_text[0][0], mapping_word, batch_text[0][2])) 
     return expand_results, expand_results_mapping
 def predict_rel(model, subject, object, length, device):
-    tokenizer = BertTokenizerFast.from_pretrained('./FG-SGG_from_LM/bert-base-uncased')
+    tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
     batch = []
     predicates = []
     for i in range(length):
@@ -425,7 +413,7 @@ def expand_relationships(rel_data, obj_data, img_data, split, encoded_label, idx
                 if subject['object_id'] in id_to_idx and object['object_id'] in id_to_idx:
                     original_objects.append((id_to_idx[subject['object_id']], id_to_idx[object['object_id']]))
             basename =  str(img_id) + '.jpg'
-            img_path = os.path.join("/home/Datasets/VG/VG_100K", basename)
+            img_path = os.path.join("datasets/vg/VG_100K", basename)
 
             # construct new_rel_dict for extra.pk
             new_rel_dict =  {}
@@ -512,37 +500,6 @@ def expand_relationships(rel_data, obj_data, img_data, split, encoded_label, idx
                 rel_id = expand_predicate_to_idx[relationship[1]]
                 new_rel_dict['relations'].append([sub_idx, obj_idx, rel_id])
                 expand_dataset[str(img_id)].append(relationship)
-            
-
-
-                        # if subject_label != object_label:
-                        #     predicate_results = predict_rel_prompt(model_own, img_path, subject_label, object_label, device)
-                        #     expand_relation.append(predicate_results)
-                        #     for relationship in predicate_results:
-                        #         new_relation = {}
-                        #         new_predicate = relationship[1]
-                        #         new_object = object
-                        #         new_subject = subject
-                        #         max_rel_id += 1
-                        #         new_relationship_id = max_rel_id
-                        #         # new_synsets = wn.synsets(new_predicate)[0]
-                        #         new_synsets = [new_predicate + '.n.01']
-                        #         new_relation['predicate'] = new_predicate
-                        #         if new_predicate not in new_predicate_dict.keys():
-                        #             new_predicate_dict[new_predicate] = 1
-                        #         else:
-                        #             new_predicate_dict[new_predicate] += 1 
-                        #         new_relation['object'] = new_object
-                        #         new_relation['relationship_id'] = new_relationship_id
-                        #         new_relation['synsets'] = new_synsets
-                        #         new_relation['subject'] = new_subject
-                        #         new_rels.append(new_relation)
-                                
-                        #         sub_idx = id_to_idx[subject['object_id']] - im_to_first_obj[i]
-                        #         obj_idx = id_to_idx[object['object_id']] - im_to_first_obj[i]
-                        #         rel_id = expand_predicate_to_idx[relationship[1]]
-                        #         new_rel_dict['relations'].append([sub_idx, obj_idx, rel_id])
-                        #         expand_dataset[str(img_id)].append(relationship)
 
             new_rel_dict['relations'] = np.array(new_rel_dict['relations']) # expanded relationships like IETrans(external) with .pk
             expand_relation_dict[img_id] = expand_relation # expanded information for CaCao
@@ -872,19 +829,9 @@ def main(args):
 
     # read in the annotation data
     print('loading json files..')
-    time_0 = time.time()
     obj_data = json.load(open(args.object_input)) # 耗时 23.735572338104248
-    time_1 = time.time()
-    print('读取obj_data耗时:',time_1-time_0)
     rel_data = json.load(open(args.relationship_input)) # 耗时 31.382099866867065
-    time_2 = time.time()
-    print('读取rel_data耗时:',time_2-time_1)
     img_data = json.load(open(args.metadata_input)) # 0.2966177463531494
-    time_3 = time.time()
-    print('读取img_data耗时:',time_3-time_2)
-    time_0 = time.time()
-    time_1 = time.time()
-    print('读取数据耗时:',time_1-time_0)
     assert(len(rel_data) == len(obj_data) and
            len(obj_data) == len(img_data))
     # 51498 img in coco of 108077 VG-150 dataset
@@ -912,51 +859,35 @@ def main(args):
         rel_data = rel_data[:num_im]
     
     print('processing %i images' % num_im)
-    time_4 = time.time()
     # sync objects from rel to obj_data
     sync_objects(obj_data, rel_data) # 耗时 3.2866623401641846
-    time_5 = time.time()
-    print('sync_objects耗时:',time_5-time_4)
 
     obj_rel_cross_check(obj_data, rel_data) # 耗时 2.8436975479125977
-    time_6 = time.time()
-    print('obj_rel_cross_check耗时:',time_6-time_5)
 
     # preprocess label data
     preprocess_object_labels(obj_data, alias_dict=obj_alias_dict)
-    time_7 = time.time()
-    print('preprocess_object_labels耗时:',time_7-time_6) # 25.267175436019897
+
     preprocess_predicates(rel_data, alias_dict=pred_alias_dict)
-    time_8 = time.time()
-    print('preprocess_predicates耗时:',time_8-time_7) # 6.096548318862915
 
     heights, widths = imdb['original_heights'][:], imdb['original_widths'][:]
     if args.min_box_area_frac > 0:
         # filter out invalid small boxes, if box is smaller than min_box_area of image, then filter
         print('threshold bounding box by %f area fraction' % args.min_box_area_frac)
-        filter_object_boxes(obj_data, heights, widths, args.min_box_area_frac) # filter by box dimensions
-    print('filter_object_boxes耗时:',time.time() - time_0) # 2.824154853820801
+        filter_object_boxes(obj_data, heights, widths, args.min_box_area_frac) # filter by box dimensions.824154853820801
 
-    time_9 = time.time()
     merge_duplicate_boxes(obj_data)
-    print('merge_stop')
+    print('finish merge')
     # build vocabulary
-    time_10 = time.time()
     object_tokens, object_token_counter = extract_object_token(obj_data, args.num_objects,
                                                                obj_list)
-    time_11 = time.time()
-    print('extract_object_token耗时:',time_11-time_10)
 
     label_to_idx, idx_to_label = build_token_dict(object_tokens)
-
 
     predicate_tokens, predicate_token_counter = extract_predicate_token(rel_data,
                                                                         args.num_predicates,
                                                                         pred_list)
     
     predicate_to_idx, idx_to_predicate = build_token_dict(predicate_tokens)
-    time_12 = time.time()
-    print('build_token_dict1耗时:',time_12-time_11)
     print('objects: ',len(idx_to_label))
     print('relationships: ',len(idx_to_predicate))
 
@@ -1005,12 +936,9 @@ def main(args):
             expand_pred_list.append(p) 
     
     # update original token counter for expanded predicates(some rare predicates also in expanded-set) only keep 460/587 predicates with enough instances
-    time_13 = time.time()
     expand_predicate_tokens, expand_predicate_token_counter = extract_predicate_token(rel_data,
                                                                         len(expand_pred_list),
                                                                         expand_pred_list)
-    time_14 = time.time()
-    print('extract_predicate_token耗时:',time_14-time_13)
     # base_sum = 0
     # fine_sum = 0                                                                    
     # for p in novel_predicates:
@@ -1037,12 +965,9 @@ def main(args):
     # if we encode all relationship in training stage, it seems like classifiction
     # but in realistic zero-shot setting, we should only encode base classes of relation(encluding expanded relation)
     # for evaluation, individually encode novel classes of relation and predict individual relation_idx with similarity
-    time_15 = time.time()
     novel_predicate_to_idx, idx_to_novel_predicate = build_token_dict(novel_predicate_tokens)
     base_predicate_to_idx, idx_to_base_predicate = build_token_dict(base_predicate_tokens)
     expand_predicate_to_idx, idx_to_expand_predicate = build_token_dict(expand_predicate_tokens)
-    time_16 = time.time()
-    print('build_token_dict2耗时:',time_16-time_15)
     print('expand predicate tokens: ', len(expand_predicate_tokens))
     print('test predicate tokens: ', len(novel_predicate_tokens))
     print('base predicate tokens: ', len(base_predicate_tokens))
@@ -1163,20 +1088,19 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--imdb', default='./imdb_512.h5', type=str)
-    parser.add_argument('--object_input', default='data_vg/objects.json', type=str)
-    parser.add_argument('--relationship_input', default='data_vg/relationships.json', type=str)
-    parser.add_argument('--metadata_input', default="data_vg/image_data.json", type=str)
-    parser.add_argument('--object_alias', default='data_vg/object_alias.txt', type=str)
-    parser.add_argument('--pred_alias', default='data_vg/predicate_alias.txt', type=str)
-    parser.add_argument('--object_list', default='data_vg/object_list.txt', type=str)
-    parser.add_argument('--pred_list', default='data_vg/predicate_list.txt', type=str)
+    parser.add_argument('--object_input', default='datasets/vg/objects.json', type=str)
+    parser.add_argument('--relationship_input', default='datasets/vg/relationships.json', type=str)
+    parser.add_argument('--metadata_input', default="datasets/vg/image_data.json", type=str)
+    parser.add_argument('--object_alias', default='datasets/vg/object_alias.txt', type=str)
+    parser.add_argument('--pred_alias', default='datasets/vg/predicate_alias.txt', type=str)
+    parser.add_argument('--object_list', default='datasets/vg/object_list.txt', type=str)
+    parser.add_argument('--pred_list', default='datasets/vg/predicate_list.txt', type=str)
+    parser.add_argument('--input_split_file', default="datasets/vg/VG-SGG.h5")
     parser.add_argument('--num_objects', default=150, type=int, help="set to 0 to disable filtering")
     parser.add_argument('--num_predicates', default=50, type=int, help="set to 0 to disable filtering")
     parser.add_argument('--min_box_area_frac', default=0.002, type=float)
-    
     parser.add_argument('--load_frac', default=1, type=float)
     parser.add_argument('--use_input_split', default=True, type=bool)
-    parser.add_argument('--input_split_file', default="data_vg/VG-SGG.h5")
     parser.add_argument('--train_frac', default=0.7, type=float)
     parser.add_argument('--val_frac', default=0.8, type=float)
     parser.add_argument('--shuffle', default=False, type=bool)
@@ -1186,4 +1110,12 @@ if __name__ == '__main__':
     parser.add_argument('--json_file_base', default='VG-SGG-base-dicts.json')
     parser.add_argument('--json_file', default='VG-SGG-base-EXPANDED-dicts.json')
     args = parser.parse_args()
+
+    target_words = [line.strip('\n').strip('\r') for line in open('datasets/vg/predicate_list.txt')]
+    mapping_dict = json.load(open('utils_data/mapping/openworld_predicate_mapping_dict_50.json'))
+    if args.mode == '50':
+        _, _, words = load_vg_mapping_dataset_image_text('datasets/image_caption_triplet.json')
+    else:
+        _, _, words = load_vg_dataset_image_text('datasets/image_caption_triplet_all.json')
+    device = 'cuda'
     main(args)

@@ -17,7 +17,7 @@ checkpoints/
 bert-base-uncased/
 
 # dataset
-datasets/vg/
+# datasets/vg/
 datasets/coco/
 
 # Editor temporaries
@@ -36,3 +36,11 @@ datasets/coco/
 
 # MacOS
 .DS_Store
+*.npy
+*.zip
+*.h5
+data_vg
+data_vg_origin
+FG-SGG-from-LM
+.gitignore
+*.json

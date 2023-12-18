@@ -4,8 +4,12 @@ import argparse
 import json
 from numpy import float32
 from tqdm import tqdm
-from models.MLM.mpt_test import VisualBertPromptModel
-from models.MLM.utils import fineTuningDataset
+# from models.MLM.mpt_test import VisualBertPromptModel
+# from models.MLM.utils import fineTuningDataset
+# 更改的东西
+from models.MLM.mpt_test_speed_up import VisualBertPromptModel
+from models.MLM.utils_speed_up import fineTuningDataset, load_vg_mapping_dataset_image_text, load_vg_dataset_image_text
+
 
 from models.MLM.tokenization_bert_fast import BertTokenizerFast
 import torch
@@ -15,15 +19,13 @@ from torch.utils.data import Dataset, DataLoader
 
 def train_epoch(model, train_loader, optimizer, theta, device):
     total_train_loss = 0
-    torch.autograd.set_detect_anomaly(True)
-    for triplets in tqdm(train_loader):
+    torch.autograd.set_detect_anomaly(True)      
+    for triplets in tqdm(train_loader):          
         batch_text = []
-        batch_img = []
         for i in range(len(triplets[1])):
             subject, predicate, object = triplets[1][i].split('--')
             batch_text.append((subject.lower(), predicate.lower(), object.lower()))
-            batch_img.append(triplets[0][i])      
-        outputs, label = model(batch_text, batch_img, weight, theta, device)
+        outputs, label = model(batch_text, triplets[-1]['pixel_values'], weight, theta, device)            ##[64,50]#
         # loss = outputs.loss
         loss, logits = outputs[:2]
         total_train_loss += loss.item()
@@ -46,13 +48,14 @@ def train(model, train_loader, val_loader, config, mode=None):
             param.requires_grad = True
         else:
             param.requires_grad = False
-    optimizer = torch.optim.AdamW(
+    optimizer = torch.optim.AdamW(                                                       #优化器 
         model.parameters(), lr=config.lr, weight_decay=config.weight_decay
     )
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(                           #动态调整学习率
         optimizer, mode="min", patience=config.patience, factor=config.factor
     )
     print('------start training---------')
+    # for total_epochs in range(1):
     for total_epochs in range(5):
         model.train()
         total_mean_loss = train_epoch(model, train_loader, optimizer, config.theta, device=config.device)
@@ -71,15 +74,16 @@ def eval(model, val_loader, theta, device):
     top_10 = 0
     top_1 = 0
     total = 0
-    cluster_dict = json.load(open('utils_data/cluster/CaCao_map50_dict_07.json','r'))
+    cluster_dict = json.load(open(file_path[1],'r'))
+    # cluster_dict = json.load(open('utils_data/cluster/CaCao_all_cluster_dict_07.json','r'))
     for triplets in tqdm(val_loader):
         batch_text = []
-        batch_img = []
+        # batch_img = []
         for i in range(len(triplets[1])):
             subject, predicate, object = triplets[1][i].split('--')
             batch_text.append((subject.lower(), predicate.lower(), object.lower()))
-            batch_img.append(triplets[0][i])        
-        val_output, label = model(batch_text, batch_img, weight, theta, device)
+            # batch_img.append(triplets[0][i])        
+        val_output, label = model(batch_text,triplets[-1]['pixel_values'],weight, theta, device)
         predictions = val_output[1]
         val_loss = val_output[0]
         for j in range(predictions.shape[0]):
@@ -127,14 +131,15 @@ def test(model, test_loader, theta, device):
     len_test = len(test_loader)
     for triplets in tqdm(test_loader):
         batch_text = []
-        batch_img = []
+        # batch_img = []
         for i in range(len(triplets[1])):
             subject, predicate, object = triplets[1][i].split('--')
             batch_text.append((subject.lower(), predicate.lower(), object.lower()))
-            batch_img.append(triplets[0][i])   
-        output, label = model(batch_text, batch_img, weight, theta, device) 
+            # batch_img.append(triplets[0][i])   
+        output, label = model(batch_text,triplets[-1]['pixel_values'], weight, theta, device) 
         predictions = output[1]
-        cluster_dict = json.load(open('utils_data/cluster/CaCao_map50_dict_07.json','r'))
+        # cluster_dict = json.load(open('utils_data/cluster/CaCao_all_cluster_dict_07.json','r'))
+        cluster_dict = json.load(open(file_path[1],'r'))
         word_1 = []
         word_3 = []
         word_5 = []
@@ -164,17 +169,12 @@ def test(model, test_loader, theta, device):
     return top_1 / len_test
 
 def main(args):
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=8)
     model_own = VisualBertPromptModel(args.prompt_num, prompt_candidates, words, relation_type_count=relation_type_count)
-    # train
-    # train(model_own, train_loader, val_loader, args)
     train(model_own, train_loader, val_loader, args, 'VPT')
     train(model_own, train_loader, val_loader, args, 'LPT') 
     train(model_own, train_loader, val_loader, args, 'ASCL')
 
-    torch.save(model_own.state_dict(),'checkpoints/cluster_50_model.pkl') 
+    torch.save(model_own.state_dict(),file_path[2]) 
     test_acc = test(model_own, test_loader, args.theta, args.device)
     print('test recall@1:{}'.format(test_acc))
 if __name__ == '__main__':
@@ -201,7 +201,8 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "--device",
-        default="cuda:0"
+        # default="cuda:0"
+        default="cuda:1"
     )
     parser.add_argument(
         "--batch_size",
@@ -215,23 +216,45 @@ if __name__ == '__main__':
         "--prompt_num",
         default=10
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=['50','all'],
+        required=True
+    )
     args = parser.parse_args()
+    if args.mode == '50':
+        file_path=[
+            'datasets/image_caption_triplet.json',
+            'utils_data/cluster/CaCao_map50_dict_07.json',
+            'checkpoints/cluster_50_model.pkl'
+        ]
+    else:
+        file_path=[
+            'datasets/image_caption_triplet_all.json',
+            'utils_data/cluster/CaCao_all_cluster_dict_07.json',
+            'checkpoints/cluster_all_model.pkl'
+        ]
     tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
     prompt_candidates = []
     with open('bert-base-uncased/prompt.txt','r') as f:
         for line in f.readlines():
             prompt_candidates.append(line.strip('\n'))
-    # dataset = fineTuningDataset('datasets/image_caption_triplet_all.json',"/home/qifan/datasets/coco/train2014/")
-    train_dataset = fineTuningDataset('datasets/image_caption_triplet_all.json',"/home/qifan/datasets/coco/train2014/",'train')
-    val_dataset = fineTuningDataset('datasets/image_caption_triplet_all.json',"/home/qifan/datasets/coco/train2014/",'val')
-    test_dataset = fineTuningDataset('datasets/image_caption_triplet_all.json',"/home/qifan/datasets/coco/train2014/",'test')
+    if args.mode == '50':
+        triplets, weight, predicates_words = load_vg_mapping_dataset_image_text(file_path[0])
+    else:
+        triplets, weight, predicates_words = load_vg_dataset_image_text(file_path[0])
+    train_dataset = fineTuningDataset("datasets/coco/train2014/",triplets,weight,predicates_words,'train')  ##权重
+    val_dataset = fineTuningDataset("datasets/coco/train2014/",triplets,weight,predicates_words,'val')
+    test_dataset = fineTuningDataset("datasets/coco/train2014/",triplets,weight,predicates_words,'test')
     print('train:{train}, val:{val}, test:{test}'.format(train=len(train_dataset),val=len(val_dataset),test=len(test_dataset)))
+    
     weight = train_dataset.weight
     words = train_dataset.predicates_words
     relation_type_count = len(words)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=16)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=1)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=True, num_workers=8)
     # train
     main(args)
     # test recall@1:0.7357060518731989

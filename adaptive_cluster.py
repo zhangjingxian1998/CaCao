@@ -1,23 +1,18 @@
 import json
-from cv2 import split
 from sklearn import metrics
-from sklearn.cluster import KMeans,MiniBatchKMeans
+from sklearn.cluster import KMeans
 from sklearn.discriminant_analysis import StandardScaler
-from sklearn.feature_extraction.text import TfidfVectorizer
 import torch
 from tqdm import tqdm
 from transformers import BertModel, BertTokenizerFast
 import scipy
-import torch.nn.functional as F
-from models.MLM.utils import fineTuningDataset
-from torch.utils.data import DataLoader
-import numpy as np
-import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
-import random
 import pandas as pd 
+from models.MLM.utils_speed_up import load_vg_mapping_dataset_image_text, load_vg_dataset_image_text
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 def SSE_clu(v1,v2):
     return sum(np.power(v1 - v2,2)) 
@@ -142,14 +137,15 @@ class WordsCluster(object):
         all_keyfeatures = self.initial_embedding_info(keywords)
         st = StandardScaler()
         # all_keyfeatures = st.fit_transform(all_keyfeatures.numpy())
-        sk_kmeans = KMeans(n_clusters=num_clusters)
+        sk_kmeans = KMeans(n_clusters=num_clusters,n_init='auto')
         result_list = sk_kmeans.fit(all_keyfeatures)
         centroids = result_list.cluster_centers_
         closest_centroids_ids = result_list.labels_
         # centroids, closest_centroids_ids = self.train(all_keyfeatures.numpy(), num_clusters, max_iterations=10)
         # find the represented word
         cluster_dict = dict()
-        for i, centroid in enumerate(centroids):
+        loop = tqdm(enumerate(centroids), total=len(centroids))
+        for i, centroid in loop:
             similarity = -1
             for k in self.words_w2v_dic:
                 cur_similarity = torch.cosine_similarity(torch.tensor(centroid), self.words_w2v_dic[k], dim=-1)
@@ -163,6 +159,7 @@ class WordsCluster(object):
             for m, k in enumerate(self.words_w2v_dic):
                 if closest_centroids_ids[m] == i:
                     cluster_dict[str(i)]["words"].append(k)
+            loop.set_description(f'Cluster [{i}/{len(centroids)}]')
         return cluster_dict
 
  
@@ -338,24 +335,33 @@ class WordsCluster(object):
         plt.savefig('centroids_4.png')
   
 if __name__ == '__main__':
-    vg_dataset = fineTuningDataset('datasets/image_caption_triplet_all.json',"/home/qifan/datasets/coco/train2014/",'train')
-    # train_dataset = fineTuningDataset('gqa_triplets.json',"/home/qifan/datasets/GQA/images/",'train')
-    data_loader = DataLoader(vg_dataset, batch_size=8, shuffle=True)
-    predicate_words = vg_dataset.predicates_words
+    prep_words = []
+    ignore_words = []
+    kmeans = WordsCluster('bert-base-uncased', ignore_keywords=ignore_words, prep_words=prep_words)
+    print('start to load vg dataset')
+    all_triplets, all_weight, all_predicate_words = load_vg_dataset_image_text('datasets/image_caption_triplet_all.json')
+    predicate_dict = dict()
+    for p in all_predicate_words:
+        predicate_dict[p] = [[p]]
+    for triplet_info in all_triplets:
+        triplet = triplet_info['triplet']
+        predicate_dict[triplet[1].lower()].append(triplet)
+    
+    # kmeans.monte_carlo(predicate_dict)
+    # using sim_threshold to initilize the number of clusters for total classes
+    cluster_dict = kmeans.cluster(predicate_dict, num_clusters=230, sim_threshold=0.7)
+    json.dump(cluster_dict, open('utils_data/cluster/CaCao_all_cluster_dict_07.json', 'w'))
+    print('230_cluster finish')
+    print('start to load vg dataset')
+    triplets, weight, predicate_words = load_vg_mapping_dataset_image_text('datasets/image_caption_triplet.json')
     predicate_dict = dict()
     for p in predicate_words:
         predicate_dict[p] = [[p]]
-    for triplet_info in vg_dataset.triplets:
+    for triplet_info in triplets:
         triplet = triplet_info['triplet']
         predicate_dict[triplet[1].lower()].append(triplet)
-    prep_words = []
-    ignore_words = []
-    kmeans = WordsCluster('/home/qifan/FG-SGG_from_LM/bert-base-uncased', ignore_keywords=ignore_words, prep_words=prep_words)
-    # kmeans.monte_carlo(predicate_dict)
-    # using sim_threshold to initilize the number of clusters for total classes
-    # cluster_dict = kmeans.cluster(predicate_dict, num_clusters=230, sim_threshold=0.7)
-    # json.dump(cluster_dict, open('utils_data/cluster/CaCao_all_cluster_dict_07.json', 'w'))
     # using sim_threshold to initilize the number of clusters for target classes
     cluster_dict = kmeans.cluster(predicate_dict, num_clusters=39, sim_threshold=0.7)
     json.dump(cluster_dict, open('utils_data/cluster/CaCao_map50_dict_07.json', 'w'))
+    print('39_cluster finish')
 
