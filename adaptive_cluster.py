@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 import pandas as pd 
-from models.MLM.utils_speed_up import load_vg_mapping_dataset_image_text, load_vg_dataset_image_text
+from models.MLM.utils import load_vg_mapping_dataset_image_text, load_vg_dataset_image_text
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
@@ -32,7 +32,7 @@ class WordsCluster(object):
         all_keywords_w2v_list = []
         all_keywords_embeddings = torch.tensor([])
         # get embedding of each predicate by the mean of GLOVE vectors of all triplets 
-        for keyword in keywords:
+        for keyword in tqdm(keywords,desc='initial_embedding_info'):
             with torch.no_grad():
                 predicate_embedding = []
                 for triplet in keywords[keyword]:
@@ -48,6 +48,62 @@ class WordsCluster(object):
                     predicate_embedding.append(total_embedding)
                 predicate_embedding = torch.stack(predicate_embedding, dim=0)
                 predicate_embedding = torch.mean(predicate_embedding, dim=0).unsqueeze(0)
+                all_keywords_w2v_list.append((keyword, predicate_embedding))
+                all_keywords_embeddings = torch.cat((all_keywords_embeddings, predicate_embedding), dim=0)
+        self.words_w2v_dic = dict(all_keywords_w2v_list)
+        return all_keywords_embeddings
+    
+    def initial_embedding_info_speed_up(self, keywords):
+        all_keywords_w2v_list = []
+        all_keywords_embeddings = torch.tensor([])
+        # get embedding of each predicate by the mean of GLOVE vectors of all triplets 
+        with torch.no_grad():
+            for keyword in tqdm(keywords,desc='initial_embedding_info'):
+                predicate_embedding = []
+                tmp_list = []
+                for triplet in keywords[keyword]:
+                    if len(triplet)>1:
+                        tmp_list.append('[SEP]'.join(triplet))
+                    else:
+                        tmp_list.append(triplet[0])
+                total_embedding = []
+                word_sentence = '[MASK]'.join(tmp_list) # 拼成句子，中间用 [MASK] 组合，接下来encode后，把MASK的地方作为分割标志
+                word_sentence = word_sentence + ' [MASK]'
+                predicate_int = self.tokenizer.encode(word_sentence, return_tensors="pt", add_special_tokens = False)
+                predicate_embedding = self.embedding_model(predicate_int) # [1,N,768]
+                index = torch.where(predicate_int==103)[-1]
+                index_102 = torch.where(predicate_int==102)[-1]
+                for i in range(index.shape[-1]):
+                    if i == 0:
+                        mask = index[i] > index_102
+                        if torch.sum(mask) > 0:
+                            pos_list = index_102[mask]
+                            sum = torch.zeros_like(predicate_embedding[0][0])
+                            for idx in range(len(pos_list)):
+                                if idx==0:
+                                    sum += torch.mean(predicate_embedding[0,0:pos_list[idx]],dim=0)
+                                else:
+                                    sum += torch.mean(predicate_embedding[0,pos_list[idx-1]+1:pos_list[idx]],dim=0)
+                            total_embedding.append(sum/(len(pos_list)+1))
+                            index_102 += (mask*1e6).long()
+                        else:
+                            total_embedding.append(torch.mean(predicate_embedding[0,0:index[i]],dim=0,keepdim=True))
+                    else:
+                        mask = index[i] > index_102
+                        if torch.sum(mask) > 0:
+                            pos_list = index_102[mask]
+                            sum = torch.zeros_like(predicate_embedding[0][0:1])
+                            for idx in range(len(pos_list)):
+                                if idx==0:
+                                    sum += torch.mean(predicate_embedding[0,index[i-1]+1:pos_list[idx]],dim=0)
+                                else:
+                                    sum += torch.mean(predicate_embedding[0,pos_list[idx-1]+1:pos_list[idx]],dim=0)
+                            sum += torch.mean(predicate_embedding[0,pos_list[idx]+1:index[i]],dim=0)
+                            total_embedding.append(sum/(len(pos_list)+1))
+                            index_102 += (mask*1e6).long()
+                        else:
+                            total_embedding.append(torch.mean(predicate_embedding[0,index[i-1]+1:index[i]],dim=0,keepdim=True))
+                predicate_embedding = torch.mean(torch.stack(total_embedding,dim=0),dim=0)
                 all_keywords_w2v_list.append((keyword, predicate_embedding))
                 all_keywords_embeddings = torch.cat((all_keywords_embeddings, predicate_embedding), dim=0)
         self.words_w2v_dic = dict(all_keywords_w2v_list)

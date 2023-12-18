@@ -2,7 +2,7 @@ import json
 import torch
 import os
 
-from models.MLM.utils_speed_up import load_vg_dataset_image_text, VisualBertPromptModel
+from models.MLM.utils import load_vg_dataset_image_text, VisualBertPromptModel
 from tqdm import tqdm
 
 def predict_rel_prompt(model, img_path, subject, object, device):

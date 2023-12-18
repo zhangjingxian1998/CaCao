@@ -21,11 +21,11 @@ class VisualBertPromptModel(nn.Module):
         prompt_ids = []
         for i in range(prefix_prompt_num):
             prompt_ids.append(i+1)
-        self.feature_extractor = ViTFeatureExtractor.from_pretrained('FG-SGG-from-LM/vit-base-patch32-224-in21k')
-        self.visual_encoder = ViTModel.from_pretrained('FG-SGG-from-LM/vit-base-patch32-224-in21k')
+        self.feature_extractor = ViTFeatureExtractor.from_pretrained('vit-base-patch32-224-in21k')
+        self.visual_encoder = ViTModel.from_pretrained('vit-base-patch32-224-in21k')
         self.transformerlayer = TransformerLayer(hidden_size=hidden_size, num_attention_heads=12, attention_probs_dropout_prob=0.1, intermediate_size=3072, hidden_dropout_prob=0.1, layer_norm_eps=1e-8)
-        self.model = BertForMaskedLM.from_pretrained('FG-SGG-from-LM/bert-base-uncased', prompt_ids)
-        self.tokenizer = BertTokenizerFast.from_pretrained('FG-SGG-from-LM/bert-base-uncased')
+        self.model = BertForMaskedLM.from_pretrained('bert-base-uncased', prompt_ids)
+        self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
         self.embedding_input = self.model.get_input_embeddings()
         self.predicate_embeddings = []
         self.predicate_embeddings_fast = []

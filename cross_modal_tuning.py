@@ -7,8 +7,8 @@ from tqdm import tqdm
 # from models.MLM.mpt_test import VisualBertPromptModel
 # from models.MLM.utils import fineTuningDataset
 # 更改的东西
-from models.MLM.mpt_test_speed_up import VisualBertPromptModel
-from models.MLM.utils_speed_up import fineTuningDataset, load_vg_mapping_dataset_image_text, load_vg_dataset_image_text
+from models.MLM.mpt_test import VisualBertPromptModel
+from models.MLM.utils import fineTuningDataset, load_vg_mapping_dataset_image_text, load_vg_dataset_image_text
 
 
 from models.MLM.tokenization_bert_fast import BertTokenizerFast

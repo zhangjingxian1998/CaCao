@@ -20,7 +20,7 @@ from tqdm import tqdm
 from models.MLM.tokenization_bert_fast import BertTokenizerFast
 from models.MLM.mpt_test_boost import VisualBertPromptModel
 import time
-from models.MLM.utils_speed_up import load_vg_dataset_image_text, load_vg_mapping_dataset_image_text
+from models.MLM.utils import load_vg_dataset_image_text, load_vg_mapping_dataset_image_text
 
 """
 A script for generating fine-grained predicates for the VisualGenome dataset
@@ -387,8 +387,8 @@ def expand_relationships(rel_data, obj_data, img_data, split, encoded_label, idx
     rst = []
     expand_relation_dict = dict()
     for i, rel_info in tqdm(enumerate(rel_data)):
-        if i < 20:
-            continue
+        if i > 20:
+            break
         if split[i] == 0:
             obj_info = obj_data[i]
             inter_objects = []
@@ -455,8 +455,8 @@ def expand_relationships(rel_data, obj_data, img_data, split, encoded_label, idx
                 object = inter_object_list[idx][1]
                 new_relation = {}
                 new_predicate = relationship[1]
-                new_object = object_label_list[idx]
-                new_subject = subject_label_list[idx]
+                new_object = object
+                new_subject = subject
                 max_rel_id += 1
                 new_relationship_id = max_rel_id
                 # new_synsets = wn.synsets(new_predicate)[0]
@@ -890,7 +890,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_frac', default=0.7, type=float)
     parser.add_argument('--val_frac', default=0.8, type=float)
     parser.add_argument('--shuffle', default=False, type=bool)
-    parser.add_argument('--mode', default='all', type=str,choices=['50','all'])
+    parser.add_argument('--mode', default='50', type=str,choices=['50','all'])
     parser.add_argument('--h5_file', default='VG-SGG-base-EXPANDED.h5')         #写入
     parser.add_argument('--h5_file_base', default='VG-SGG-base.h5')
     parser.add_argument('--json_file_base', default='VG-SGG-base-dicts.json')

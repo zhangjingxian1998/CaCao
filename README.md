@@ -44,9 +44,9 @@ python cross_modal_tuning.py --mode 50
 python cross_modal_tuning.py --mode all
 # enhance the existing SGG dataset with our CaCao model in <pre_trained_visually_prompted_model>
 python fine_grained_predicate_boosting_data_prepare.py --mode 50 
-python fine_grained_predicate_boosting_data_prepare.py --mode 50
+python fine_grained_predicate_boosting_data_prepare.py --mode all
 
-python fine_grained_predicate_boosting.py --mode all
+python fine_grained_predicate_boosting.py --mode 50
 python fine_grained_predicate_boosting.py --mode all 
 ```
 # Quantitative Analysis

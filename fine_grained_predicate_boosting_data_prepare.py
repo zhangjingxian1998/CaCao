@@ -19,7 +19,7 @@ import torch
 from tqdm import tqdm
 from models.MLM.tokenization_bert_fast import BertTokenizerFast
 from models.MLM.mpt_test_boost import VisualBertPromptModel
-from models.MLM.utils_speed_up import load_vg_dataset_image_text, load_vg_mapping_dataset_image_text
+from models.MLM.utils import load_vg_dataset_image_text, load_vg_mapping_dataset_image_text
 
 """
 A script for generating fine-grained predicates for the VisualGenome dataset
