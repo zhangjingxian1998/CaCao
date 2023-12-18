@@ -6,33 +6,22 @@
 # --------------------------------------------------------
 
 import argparse, json, string
-import pickle
-from cgi import test
 import os
 import random
 from collections import Counter
 import math
-from cv2 import phase
 from nltk.corpus import wordnet as wn
 from math import floor
 import h5py as h5
 import numpy as np
-import pprint
 
 import torch
 from tqdm import tqdm
-from models.MLM.utils import fineTuningDataset
 from models.MLM.tokenization_bert_fast import BertTokenizerFast
 from models.MLM.mpt_test_boost import VisualBertPromptModel
 import time
-import h5py
+from models.MLM.utils_speed_up import load_vg_dataset_image_text, load_vg_mapping_dataset_image_text
 
-
-target_words = [line.strip('\n').strip('\r') for line in open('datasets/vg/predicate_list.txt')]
-mapping_dict = json.load(open('utils_data/mapping/openworld_predicate_mapping_dict_50.json'))
-fine_words_dataset = fineTuningDataset('datasets/image_caption_triplet_all.json',"/home/Datasets/coco/train2014/",'train')
-words = fine_words_dataset.predicates_words
-device = 'cuda'
 """
 A script for generating fine-grained predicates for the VisualGenome dataset
 """
@@ -353,7 +342,7 @@ def predict_rel_prompt(model, img_path, subject, object):
     # expand_results.append((batch_text[0][0], mapping_word, batch_text[0][2])) 
     return expand_results, expand_results_mapping
 def predict_rel(model, subject, object, length, device):
-    tokenizer = BertTokenizerFast.from_pretrained('./FG-SGG_from_LM/bert-base-uncased')
+    tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
     batch = []
     predicates = []
     for i in range(length):
@@ -427,7 +416,7 @@ def expand_relationships(rel_data, obj_data, img_data, split, encoded_label, idx
                 if subject['object_id'] in id_to_idx and object['object_id'] in id_to_idx:
                     original_objects.append((id_to_idx[subject['object_id']], id_to_idx[object['object_id']]))
             basename =  str(img_id) + '.jpg'
-            img_path = os.path.join("/home/Datasets/VG/VG_100K", basename)
+            img_path = os.path.join("datasets/vg/VG_100K", basename)
 
             # construct new_rel_dict for extra.pk
             new_rel_dict =  {}
@@ -884,27 +873,34 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--imdb', default='./imdb_512.h5', type=str)
-    parser.add_argument('--object_input', default='data_vg/objects.json', type=str)
-    parser.add_argument('--relationship_input', default='data_vg/relationships.json', type=str)
-    parser.add_argument('--metadata_input', default="data_vg/image_data.json", type=str)
-    parser.add_argument('--object_alias', default='data_vg/object_alias.txt', type=str)
-    parser.add_argument('--pred_alias', default='data_vg/predicate_alias.txt', type=str)
-    parser.add_argument('--object_list', default='data_vg/object_list.txt', type=str)
-    parser.add_argument('--pred_list', default='data_vg/predicate_list.txt', type=str)
+    parser.add_argument('--object_input', default='datasets/vg/objects.json', type=str)
+    parser.add_argument('--relationship_input', default='datasets/vg/relationships.json', type=str)
+    parser.add_argument('--metadata_input', default="datasets/vg/image_data.json", type=str)
+    parser.add_argument('--object_alias', default='datasets/vg/object_alias.txt', type=str)
+    parser.add_argument('--pred_alias', default='datasets/vg/predicate_alias.txt', type=str)
+    parser.add_argument('--object_list', default='datasets/vg/object_list.txt', type=str)
+    parser.add_argument('--pred_list', default='datasets/vg/predicate_list.txt', type=str)
+    parser.add_argument('--input_split_file', default="datasets/vg/VG-SGG.h5")
     parser.add_argument('--num_objects', default=150, type=int, help="set to 0 to disable filtering")
     parser.add_argument('--num_predicates', default=50, type=int, help="set to 0 to disable filtering")
     parser.add_argument('--min_box_area_frac', default=0.002, type=float)
     
     parser.add_argument('--load_frac', default=1, type=float)
     parser.add_argument('--use_input_split', default=True, type=bool)
-    parser.add_argument('--input_split_file', default="data_vg/VG-SGG.h5")
     parser.add_argument('--train_frac', default=0.7, type=float)
     parser.add_argument('--val_frac', default=0.8, type=float)
     parser.add_argument('--shuffle', default=False, type=bool)
-    parser.add_argument('--mode', default='50', type=str,choices=['50','all'])
+    parser.add_argument('--mode', default='all', type=str,choices=['50','all'])
     parser.add_argument('--h5_file', default='VG-SGG-base-EXPANDED.h5')         #写入
     parser.add_argument('--h5_file_base', default='VG-SGG-base.h5')
     parser.add_argument('--json_file_base', default='VG-SGG-base-dicts.json')
     parser.add_argument('--json_file', default='VG-SGG-base-EXPANDED-dicts.json')
     args = parser.parse_args()
+    target_words = [line.strip('\n').strip('\r') for line in open('datasets/vg/predicate_list.txt')]
+    mapping_dict = json.load(open('utils_data/mapping/openworld_predicate_mapping_dict_50.json'))
+    if args.mode == '50':
+        _, _, words = load_vg_mapping_dataset_image_text('datasets/image_caption_triplet.json')
+    else:
+        _, _, words = load_vg_dataset_image_text('datasets/image_caption_triplet_all.json')
+    device = 'cuda'
     main(args)
